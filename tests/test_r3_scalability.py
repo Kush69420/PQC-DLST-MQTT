@@ -111,13 +111,15 @@ class TestByteAccounting:
         assert cost.per_message_wire_bytes == expected_total
 
     def test_dlst_per_message_bytes_gcm(self):
-        """DLST (levels 2-5): 1 frame = 9-byte header + payload + 16-byte GCM tag, sent (1+N) times."""
+        """DLST (levels 2-5): 1 frame = 9-byte header + payload + 16-byte GCM tag, sent (1+N) times for unicast, 2 times for multicast."""
         payload = 64
         n_subs = 10
         cost = dlst_cost(n_subs=n_subs, n_pubs=1, level=3, payload_size=payload)
         expected_frame = DLST_HEADER_SIZE + payload + GCM_TAG_SIZE
-        expected_total = (1 + n_subs) * expected_frame
-        assert cost.per_message_wire_bytes == expected_total
+        expected_total_uni = (1 + n_subs) * expected_frame
+        expected_total_mcast = 2 * expected_frame
+        assert cost.per_message_wire_bytes == expected_total_uni
+        assert cost.per_message_wire_bytes_multicast == expected_total_mcast
 
     def test_dlst_per_message_bytes_kmac(self):
         """DLST level 1: integrity-only, 32-byte KMAC tag."""
@@ -125,25 +127,21 @@ class TestByteAccounting:
         n_subs = 10
         cost = dlst_cost(n_subs=n_subs, n_pubs=1, level=1, payload_size=payload)
         expected_frame = DLST_HEADER_SIZE + payload + KMAC_TAG_SIZE
-        expected_total = (1 + n_subs) * expected_frame
-        assert cost.per_message_wire_bytes == expected_total
+        expected_total_uni = (1 + n_subs) * expected_frame
+        expected_total_mcast = 2 * expected_frame
+        assert cost.per_message_wire_bytes == expected_total_uni
+        assert cost.per_message_wire_bytes_multicast == expected_total_mcast
 
-    def test_dlst_frame_smaller_than_tls_record(self):
-        """DLST frame should be smaller than TLS record for same payload."""
+    def test_dlst_frame_smaller_than_tls_record_under_multicast(self):
+        """Under multicast, DLST wire bytes are smaller than TLS for N >= 2."""
         payload = 64
-        dlst_frame = DLST_HEADER_SIZE + payload + GCM_TAG_SIZE  # 9 + 64 + 16 = 89
-        tls_record = TLS_RECORD_OVERHEAD + payload              # 22 + 64 = 86
-        # NOTE: per individual record, TLS may be slightly smaller because
-        # DLST has a 9-byte header vs TLS 5-byte record header.
-        # The advantage comes from MULTICAST: DLST sends 1 frame,
-        # TLS sends N records. At N≥2 the DLST aggregate is always smaller.
+        # DLST frame = 9 + 64 + 16 = 89 bytes. Multicast = 2 frames = 178 bytes.
+        # TLS record = 22 + 64 = 86 bytes. Unicast N=2 = 3 records = 258 bytes.
+        # For N >= 2, TLS unicast (O(N)) is always larger than DLST multicast (O(1)).
         for n_subs in [2, 10, 100]:
             tls_cost = tls_baseline_cost(n_subs=n_subs, n_pubs=1, level=3, payload_size=payload)
             dlst_cost_val = dlst_cost(n_subs=n_subs, n_pubs=1, level=3, payload_size=payload)
-            # Both fan out (1+N), so per-message bytes are proportional to frame size
-            # The TLS overhead per frame (22 bytes) vs DLST (25 bytes for GCM)
-            # means per-frame TLS is slightly smaller, but the point is the
-            # broker crypto load, not frame size.
+            assert dlst_cost_val.per_message_wire_bytes_multicast < tls_cost.per_message_wire_bytes
 
 
 class TestScaling:

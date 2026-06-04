@@ -188,7 +188,8 @@ class CostBreakdown:
     # Per-message (ongoing, per single message published)
     sym_ops_per_message: int = 0        # Total symmetric ops to deliver 1 msg to all subs
     broker_sym_ops_per_message: int = 0 # Of those, how many are at the broker
-    per_message_wire_bytes: int = 0     # Total bytes on wire for 1 msg to all subs
+    per_message_wire_bytes: int = 0     # Total unicast bytes on wire for 1 msg to all subs
+    per_message_wire_bytes_multicast: int = 0 # Total multicast bytes on wire for 1 msg to all subs
 
     # Qualitative
     broker_sees_plaintext: bool = True
@@ -201,9 +202,10 @@ class CostBreakdown:
     def total_broker_sym_ops(self, n_messages: int) -> int:
         return self.broker_sym_ops_per_message * n_messages
 
-    def total_wire_bytes(self, n_messages: int) -> int:
+    def total_wire_bytes(self, n_messages: int, multicast: bool = False) -> int:
+        wire_bytes_per_msg = self.per_message_wire_bytes_multicast if multicast else self.per_message_wire_bytes
         return self.handshake_bytes + self.topic_setup_bytes + \
-               self.per_message_wire_bytes * n_messages
+               wire_bytes_per_msg * n_messages
 
 
 # ---------------------------------------------------------------------------
@@ -281,6 +283,7 @@ def tls_baseline_cost(
         sym_ops_per_message=sym_ops_per_msg,
         broker_sym_ops_per_message=broker_sym_ops,
         per_message_wire_bytes=per_msg_bytes,
+        per_message_wire_bytes_multicast=per_msg_bytes,  # TLS cannot multicast
         broker_sees_plaintext=True,
         end_to_end_secure=False,
     )
@@ -367,11 +370,12 @@ def dlst_cost(
     # Bytes: publisher sends 1 frame. Broker fans out the SAME frame
     # (no re-encryption, so no new ciphertext). Each subscriber receives
     # the identical bytes.
-    # Wire bytes = 1 × frame from pub to broker + N × same frame to subs
-    # (MQTT QoS routing, but the ciphertext is identical)
+    # Wire bytes (unicast) = 1 × frame from pub to broker + N × same frame to subs
+    # Wire bytes (multicast) = 1 × frame from pub to broker + 1 × multicast frame to all subs
     tag_size = _dlst_tag_size(level)
     dlst_frame_size = DLST_HEADER_SIZE + payload_size + tag_size
-    per_msg_bytes = (1 + n_subs) * dlst_frame_size
+    per_msg_bytes_unicast = (1 + n_subs) * dlst_frame_size
+    per_msg_bytes_multicast = 2 * dlst_frame_size
 
     return CostBreakdown(
         protocol="PQC-DLST-MQTT",
@@ -386,7 +390,8 @@ def dlst_cost(
         topic_setup_bytes=total_topic_setup_bytes,
         sym_ops_per_message=sym_ops_per_msg,
         broker_sym_ops_per_message=broker_sym_ops,
-        per_message_wire_bytes=per_msg_bytes,
+        per_message_wire_bytes=per_msg_bytes_unicast,
+        per_message_wire_bytes_multicast=per_msg_bytes_multicast,
         broker_sees_plaintext=False,
         end_to_end_secure=True,
     )
@@ -419,15 +424,27 @@ class ComparisonRow:
 
     @property
     def per_msg_byte_delta(self) -> int:
-        """Per-message byte difference."""
+        """Per-message byte difference (unicast)."""
         return self.tls.per_message_wire_bytes - self.dlst.per_message_wire_bytes
 
     @property
     def per_msg_byte_ratio(self) -> float:
-        """TLS bytes / DLST bytes per message."""
+        """TLS bytes / DLST bytes per message (unicast)."""
         if self.dlst.per_message_wire_bytes == 0:
             return float("inf")
         return self.tls.per_message_wire_bytes / self.dlst.per_message_wire_bytes
+
+    @property
+    def per_msg_multicast_byte_delta(self) -> int:
+        """Per-message byte difference (multicast)."""
+        return self.tls.per_message_wire_bytes_multicast - self.dlst.per_message_wire_bytes_multicast
+
+    @property
+    def per_msg_multicast_byte_ratio(self) -> float:
+        """TLS bytes / DLST bytes per message (multicast)."""
+        if self.dlst.per_message_wire_bytes_multicast == 0:
+            return float("inf")
+        return self.tls.per_message_wire_bytes_multicast / self.dlst.per_message_wire_bytes_multicast
 
 
 def sweep(
@@ -491,28 +508,31 @@ def print_comparison_table(rows: list[ComparisonRow]) -> None:
                   f"{'KEM(TLS)':>8s} {'KEM(DLST)':>9s}  "
                   f"{'Sym/msg(TLS)':>12s} {'Sym/msg(DLST)':>13s}  "
                   f"{'Broker(TLS)':>11s} {'Broker(DLST)':>12s}  "
-                  f"{'Bytes/msg(TLS)':>14s} {'Bytes/msg(DLST)':>15s}  "
-                  f"{'Ratio':>5s}")
+                  f"{'Bytes(TLS)':>10s} {'Bytes(DLST-Uni)':>14s} {'Bytes(DLST-Mcast)':>16s}  "
+                  f"{'Ratio(Mcast)':>12s}")
             print(f"  {'-----':>5s}  "
                   f"{'--------':>8s} {'---------':>9s}  "
                   f"{'------------':>12s} {'-------------':>13s}  "
                   f"{'-----------':>11s} {'------------':>12s}  "
-                  f"{'--------------':>14s} {'---------------':>15s}  "
-                  f"{'-----':>5s}")
+                  f"{'----------':>10s} {'--------------':>14s} {'----------------':>16s}  "
+                  f"{'------------':>12s}")
 
         print(f"  {row.n_subscribers:>5d}  "
               f"{row.tls.kem_operations:>8d} {row.dlst.kem_operations:>9d}  "
               f"{row.tls.sym_ops_per_message:>12d} {row.dlst.sym_ops_per_message:>13d}  "
               f"{row.tls.broker_sym_ops_per_message:>11d} "
               f"{row.dlst.broker_sym_ops_per_message:>12d}  "
-              f"{row.tls.per_message_wire_bytes:>14d} "
-              f"{row.dlst.per_message_wire_bytes:>15d}  "
-              f"{row.per_msg_byte_ratio:>5.2f}")
+              f"{row.tls.per_message_wire_bytes:>10d} "
+              f"{row.dlst.per_message_wire_bytes:>14d} "
+              f"{row.dlst.per_message_wire_bytes_multicast:>16d}  "
+              f"{row.per_msg_multicast_byte_ratio:>12.2f}")
 
     print()
     print("KEM ops: 1 per connection for BOTH protocols (should be equal)")
     print("Broker(TLS): decrypt + N re-encrypts | Broker(DLST): 0 (dumb relay)")
-    print("Bytes ratio: TLS record overhead × N vs 1 DLST frame × (1+N)")
+    print("Bytes(DLST-Uni): Unicast (TCP) delivery, sent N times (identical payload)")
+    print("Bytes(DLST-Mcast): Multicast (UDP/IP-multicast) delivery, sent 1 time to all subscribers")
+    print("Ratio(Mcast): TLS wire bytes / DLST Multicast wire bytes (the true network scalability headline)")
     print()
 
     # Qualitative summary
@@ -536,6 +556,8 @@ def export_json(rows: list[ComparisonRow], path: str) -> None:
             "broker_load_delta": row.broker_load_delta,
             "per_msg_byte_delta": row.per_msg_byte_delta,
             "per_msg_byte_ratio": row.per_msg_byte_ratio,
+            "per_msg_multicast_byte_delta": row.per_msg_multicast_byte_delta,
+            "per_msg_multicast_byte_ratio": row.per_msg_multicast_byte_ratio,
         })
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
