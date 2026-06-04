@@ -19,7 +19,7 @@ def main():
     # 1. Sweep data
     # We sweep security levels 3 and 5, subscriber counts from 10 to 200
     subs_sweep = list(range(10, 201, 10))
-    rows = sweep(levels=[3, 5], subscriber_counts=subs_sweep, payload_size=64, mutual_tls=True)
+    rows = sweep(levels=[3, 5], subscriber_counts=subs_sweep, payload_size=64, mutual_tls=False)
 
     # Group data by level
     data_by_level = {3: {"subs": [], "tls_hs": [], "dlst_hs": [], "tls_asym": [], "dlst_asym": [], "tls_msg_bytes": [], "dlst_msg_uni": [], "dlst_msg_mcast": [], "tls_broker_sym": [], "dlst_broker_sym": []},
@@ -68,7 +68,7 @@ def main():
     for i, lvl in enumerate([3, 5]):
         ax = axes[i]
         d = data_by_level[lvl]
-        ax.plot(d["subs"], d["tls_hs"], "o-", label="PQC-TLS-MQTT (mTLS)", color="#d62728", linewidth=2)
+        ax.plot(d["subs"], d["tls_hs"], "o-", label="PQC-TLS-MQTT (Server-Only)", color="#d62728", linewidth=2)
         ax.plot(d["subs"], d["dlst_hs"], "s-", label="PQC-DLST-MQTT", color="#1f77b4", linewidth=2)
         ax.set_title(f"Level {lvl} ({LEVEL_KEM[lvl]} / {LEVEL_SIG[lvl]})")
         ax.set_xlabel("Number of Subscribers (N)")
@@ -87,7 +87,7 @@ def main():
     for i, lvl in enumerate([3, 5]):
         ax = axes[i]
         d = data_by_level[lvl]
-        ax.plot(d["subs"], d["tls_asym"], "o-", label="PQC-TLS-MQTT (mTLS)", color="#d62728", linewidth=2)
+        ax.plot(d["subs"], d["tls_asym"], "o-", label="PQC-TLS-MQTT (Server-Only)", color="#d62728", linewidth=2)
         ax.plot(d["subs"], d["dlst_asym"], "s-", label="PQC-DLST-MQTT", color="#1f77b4", linewidth=2)
         ax.set_title(f"Level {lvl} ({LEVEL_KEM[lvl]} / {LEVEL_SIG[lvl]})")
         ax.set_xlabel("Number of Subscribers (N)")
@@ -147,12 +147,26 @@ def main():
         for lvl in [3, 5]:
             d = data_by_level[lvl]
             f.write(f"Level {lvl} ({LEVEL_KEM[lvl]} / {LEVEL_SIG[lvl]}):\n")
+            
+            # Handshake stats
+            tls_hs_10, dlst_hs_10 = d['tls_hs'][0], d['dlst_hs'][0]
+            if dlst_hs_10 < tls_hs_10:
+                hs_diff_10_str = f"({(tls_hs_10 - dlst_hs_10) / tls_hs_10 * 100:.1f}% reduction)"
+            else:
+                hs_diff_10_str = f"({(dlst_hs_10 - tls_hs_10) / tls_hs_10 * 100:.1f}% increase - due to mandatory mutual auth)"
+                
+            tls_hs_200, dlst_hs_200 = d['tls_hs'][-1], d['dlst_hs'][-1]
+            if dlst_hs_200 < tls_hs_200:
+                hs_diff_200_str = f"({(tls_hs_200 - dlst_hs_200) / tls_hs_200 * 100:.1f}% reduction)"
+            else:
+                hs_diff_200_str = f"({(dlst_hs_200 - tls_hs_200) / tls_hs_200 * 100:.1f}% increase - due to mandatory mutual auth)"
+
             f.write(f"  Handshake Bytes at N=10:\n")
-            f.write(f"    PQC-TLS:  {d['tls_hs'][0]:.2f} KB\n")
-            f.write(f"    PQC-DLST: {d['dlst_hs'][0]:.2f} KB ({(d['tls_hs'][0]-d['dlst_hs'][0])/d['tls_hs'][0]*100:.1f}% reduction)\n")
+            f.write(f"    PQC-TLS:  {tls_hs_10:.2f} KB\n")
+            f.write(f"    PQC-DLST: {dlst_hs_10:.2f} KB {hs_diff_10_str}\n")
             f.write(f"  Handshake Bytes at N=200:\n")
-            f.write(f"    PQC-TLS:  {d['tls_hs'][-1]:.2f} KB\n")
-            f.write(f"    PQC-DLST: {d['dlst_hs'][-1]:.2f} KB ({(d['tls_hs'][-1]-d['dlst_hs'][-1])/d['tls_hs'][-1]*100:.1f}% reduction)\n")
+            f.write(f"    PQC-TLS:  {tls_hs_200:.2f} KB\n")
+            f.write(f"    PQC-DLST: {dlst_hs_200:.2f} KB {hs_diff_200_str}\n")
             
             f.write(f"  Per-Message Wire Bytes at N=200 (64B payload):\n")
             f.write(f"    PQC-TLS (Unicast):       {d['tls_msg_bytes'][-1]} B\n")

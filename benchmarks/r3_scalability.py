@@ -217,7 +217,7 @@ def tls_baseline_cost(
     n_pubs: int,
     level: int,
     payload_size: int,
-    mutual_tls: bool = True,
+    mutual_tls: bool = False,
 ) -> CostBreakdown:
     """
     Compute PQC-TLS-MQTT cost for 1 topic, n_pubs publishers, n_subs subscribers.
@@ -452,7 +452,7 @@ def sweep(
     subscriber_counts: list[int] | None = None,
     n_pubs: int = 1,
     payload_size: int = 64,
-    mutual_tls: bool = True,
+    mutual_tls: bool = False,
 ) -> list[ComparisonRow]:
     """
     Run the R3 scalability sweep.
