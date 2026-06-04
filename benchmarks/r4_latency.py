@@ -46,13 +46,25 @@ def measure_real_tls_handshake():
     This captures socket buffers, TCP handshakes, OpenSSL context setup,
     Finished message MACs, and key scheduling.
     """
+    import subprocess
+    cert_path = Path("server.crt")
+    key_path = Path("server.key")
+    if not cert_path.exists() or not key_path.exists():
+        # Generate a self-signed EC certificate/key for localhost TLS loop
+        subprocess.run([
+            "openssl", "req", "-new", "-newkey", "ec",
+            "-pkeyopt", "ec_paramgen_curve:prime256v1",
+            "-keyout", str(key_path), "-out", str(cert_path),
+            "-nodes", "-x509", "-days", "365", "-subj", "/CN=localhost"
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind(("localhost", 0))
     port = server_socket.getsockname()[1]
     server_socket.listen(1)
 
     server_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    server_context.load_cert_chain(certfile="server.crt", keyfile="server.key")
+    server_context.load_cert_chain(certfile=str(cert_path), keyfile=str(key_path))
 
     client_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     client_context.check_hostname = False

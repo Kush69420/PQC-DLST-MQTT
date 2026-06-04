@@ -27,6 +27,12 @@ build_deps/
 .DS_Store
 Thumbs.db
 
+# Certificates/Keys
+server.crt
+server.key
+*.crt
+*.key
+
 # Results (regenerated from code)
 results/
 
