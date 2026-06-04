@@ -69,20 +69,11 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
-# Primitive byte sizes — sourced from src/pqcrypto/kem.py and sig.py
+# Primitive byte sizes — single source of truth from wrapper modules
 # ---------------------------------------------------------------------------
 
-KEM_SIZES = {
-    "ML-KEM-512":  {"pk": 800,  "ct": 768,  "ss": 32},
-    "ML-KEM-768":  {"pk": 1184, "ct": 1088, "ss": 32},
-    "ML-KEM-1024": {"pk": 1568, "ct": 1568, "ss": 32},
-}
-
-SIG_SIZES = {
-    "ML-DSA-44": {"pk": 1312, "sk": 2560, "sig": 2420},
-    "ML-DSA-65": {"pk": 1952, "sk": 4032, "sig": 3293},
-    "ML-DSA-87": {"pk": 2592, "sk": 4896, "sig": 4595},
-}
+from src.pqcrypto.kem import KEM_SIZES
+from src.pqcrypto.sig import SIG_SIZES
 
 # Protocol security level → primitive names (matches security_levels.py)
 LEVEL_KEM = {1: "ML-KEM-512", 2: "ML-KEM-512", 3: "ML-KEM-768",

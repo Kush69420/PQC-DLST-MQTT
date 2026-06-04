@@ -21,6 +21,7 @@ import struct
 from src.pqcrypto.kem import KEMWrapper
 from src.pqcrypto.sig import SigWrapper
 from src.pqcrypto.aead import AEADWrapper
+from src.pqcrypto.kdf import derive_data_iv
 
 from src.protocol.common import HeaderCodec, SequenceNumberState, ReplayGuard
 from src.protocol.phase1_auth import (
@@ -251,19 +252,22 @@ class TestEndToEndProtocolFlow:
         # -----------------------------------------------------------------------
         # Publisher publishes message. Construct 9-byte header.
         msg_counter = 1000
+        publisher_id = 101
+        epoch_id = 1
+        salt_epoch = b"\xab\xcd\xef\x01\x23\x45"  # 6-byte epoch salt
         hdr = HeaderCodec.encode(
             max_level=security_level,
             min_level=2,
             int_conf_flag=True,
             hash_name="SHA3-384",
             cipher_name="AES-192-GCM",
-            publisher_id=101,
+            publisher_id=publisher_id,
             counter=msg_counter,
-            epoch_id=1,
+            epoch_id=epoch_id,
         )
 
         aead_data = AEADWrapper(security_level)
-        data_nonce = b"DATA_NONCE_V"  # Constructed or derived
+        data_nonce = derive_data_iv(salt_epoch, publisher_id, msg_counter)
         ct_data, tag_data = aead_data.encrypt(recovered_subtopic_key[:aead_data.key_size], data_nonce, payload, hdr)
 
         # Complete frame = header + ciphertext + tag
@@ -290,12 +294,14 @@ class TestEndToEndProtocolFlow:
         )
         assert is_fresh is True
 
-        # Subscriber decrypts payload using recovered subtopic key
+        # Subscriber derives IV from header fields (same path as publisher)
+        recv_nonce = derive_data_iv(salt_epoch, recv_hdr.publisher_id, recv_hdr.counter)
+
         # Decrypt tags size: 16 bytes for GCM
         ct_recv = recv_ct_tag[:-16]
         tag_recv = recv_ct_tag[-16:]
 
-        recovered_payload = aead_data.decrypt(recovered_subtopic_key[:aead_data.key_size], data_nonce, ct_recv, tag_recv, recv_hdr_raw)
+        recovered_payload = aead_data.decrypt(recovered_subtopic_key[:aead_data.key_size], recv_nonce, ct_recv, tag_recv, recv_hdr_raw)
         assert recovered_payload == payload
 
         # -----------------------------------------------------------------------

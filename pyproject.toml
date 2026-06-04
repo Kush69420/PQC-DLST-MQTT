@@ -1,0 +1,4 @@
+[tool.pyrefly]
+python_version = "3.12"
+search_path = ["src", "."]
+site_package_path = ["venv/lib/python3.12/site-packages"]
