@@ -69,7 +69,7 @@ SECURITY_LEVELS = {
         level=1, kem_alg="ML-KEM-512", sig_alg="ML-DSA-44", aes_key_bits=None,
         hash_alg="SHA3-256", nist_kem_level=1, nist_sig_level=2,
         has_confidentiality=False, has_integrity=True, has_authentication=True,
-        phi=0.2, psi=0.4, omega=0.0, gamma=0.8,
+        phi=0.2, psi=0.4, omega=0.5, gamma=0.8,
     ),
     2: SecurityLevelConfig(
         level=2, kem_alg="ML-KEM-512", sig_alg="ML-DSA-44", aes_key_bits=128,

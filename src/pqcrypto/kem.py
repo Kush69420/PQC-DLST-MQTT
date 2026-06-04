@@ -25,9 +25,9 @@ KEM_PARAMS = {
 
 # Public key / ciphertext sizes for byte-counting (R2)
 KEM_SIZES = {
-    "ML-KEM-512":  {"pk": 800,  "ct": 768,  "ss": 32},
-    "ML-KEM-768":  {"pk": 1184, "ct": 1088, "ss": 32},
-    "ML-KEM-1024": {"pk": 1568, "ct": 1568, "ss": 32},
+    "ML-KEM-512":  {"pk": 800,  "sk": 1632, "ct": 768,  "ss": 32},
+    "ML-KEM-768":  {"pk": 1184, "sk": 2400, "ct": 1088, "ss": 32},
+    "ML-KEM-1024": {"pk": 1568, "sk": 3168, "ct": 1568, "ss": 32},
 }
 
 

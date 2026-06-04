@@ -28,9 +28,9 @@ SIG_PARAMS = {
 # Sizes for byte-counting (R2)
 SIG_SIZES = {
     "ML-DSA-44": {"pk": 1312, "sk": 2560, "sig": 2420},
-    "ML-DSA-65": {"pk": 1952, "sk": 4032, "sig": 3293},
-    "ML-DSA-87": {"pk": 2592, "sk": 4896, "sig": 4595},
-    "Falcon-512": {"pk": 897, "sk": 1281, "sig": 666},
+    "ML-DSA-65": {"pk": 1952, "sk": 4032, "sig": 3309},
+    "ML-DSA-87": {"pk": 2592, "sk": 4896, "sig": 4627},
+    "Falcon-512": {"pk": 897, "sk": 1281, "sig": 752},
 }
 
 
@@ -55,6 +55,11 @@ class SigWrapper:
 
         self.level = security_level
         self.alg_name = SIG_PARAMS[security_level]
+        if self.alg_name is not None:
+            if not oqs.is_sig_enabled(self.alg_name):
+                raise oqs.MechanismNotSupportedError(
+                    f"Signature algorithm {self.alg_name} is not enabled/supported in the current liboqs build."
+                )
         self.sizes = SIG_SIZES[self.alg_name]
 
     def keygen(self) -> tuple[bytes, bytes]:
@@ -97,13 +102,7 @@ class SigWrapper:
             True if valid, False otherwise.
         """
         with oqs.Signature(self.alg_name) as sig:
-            try:
-                is_valid = sig.verify(message, signature, vk)
-                return is_valid
-            except oqs.MechanismNotSupportedError:
-                return False
-            except Exception:
-                return False
+            return sig.verify(message, signature, vk)
 
     def get_sizes(self) -> dict:
         """Return public key, secret key, and signature sizes in bytes."""
