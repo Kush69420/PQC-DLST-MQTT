@@ -14,7 +14,7 @@ Level mapping:
 Uses PyCryptodome for all hash operations.
 """
 
-from Crypto.Hash import SHA3_256, SHA3_384, SHAKE256, KMAC128
+from Crypto.Hash import SHA3_256, SHA3_384, SHAKE256, KMAC256
 
 
 # Map protocol levels to hash functions
@@ -83,8 +83,8 @@ class HashWrapper:
         """
         if self.alg_name != "KMAC-256":
             raise ValueError(f"mac() only available for KMAC-256, not {self.alg_name}")
-        # PyCryptodome's KMAC128 with 256-bit key gives KMAC-256 equivalent
-        h = KMAC128.new(key=key, data=data, custom=custom, mac_len=mac_len)
+        # PyCryptodome's KMAC256 with 256-bit key gives true KMAC-256
+        h = KMAC256.new(key=key, data=data, custom=custom, mac_len=mac_len)
         return h.digest()
 
     def verify_mac(self, key: bytes, data: bytes, tag: bytes,

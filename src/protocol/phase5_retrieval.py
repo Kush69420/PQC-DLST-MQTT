@@ -91,8 +91,8 @@ class KeyResponse:
     @classmethod
     def deserialize(cls, data: bytes) -> "KeyResponse":
         accepted, topic_len, epoch, cur_level, lmin, lmax, key_len, reason_len = \
-            struct.unpack("!?HBBBBHH", data[:10])
-        offset = 10
+            struct.unpack("!?HBBBBHH", data[:11])
+        offset = 11
         topic = data[offset:offset + topic_len].decode("utf-8"); offset += topic_len
         key = data[offset:offset + key_len]; offset += key_len
         salt = data[offset:offset + 6]; offset += 6

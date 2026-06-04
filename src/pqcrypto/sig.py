@@ -22,6 +22,7 @@ SIG_PARAMS = {
     4: "ML-DSA-65",           # Level 4
     5: "ML-DSA-87",           # Level 5 — maximum, same as CA
     "ca": "ML-DSA-87",        # CA root — maximum strength
+    "falcon512": "Falcon-512", # Falcon-512 (Level 1/2) support
 }
 
 # Sizes for byte-counting (R2)
@@ -29,11 +30,12 @@ SIG_SIZES = {
     "ML-DSA-44": {"pk": 1312, "sk": 2560, "sig": 2420},
     "ML-DSA-65": {"pk": 1952, "sk": 4032, "sig": 3293},
     "ML-DSA-87": {"pk": 2592, "sk": 4896, "sig": 4595},
+    "Falcon-512": {"pk": 897, "sk": 1281, "sig": 666},
 }
 
 
 class SigWrapper:
-    """Wrapper around liboqs ML-DSA for the PQC-DLST-MQTT protocol."""
+    """Wrapper around liboqs ML-DSA and Falcon digital signatures."""
 
     def __init__(self, security_level: int | str):
         """

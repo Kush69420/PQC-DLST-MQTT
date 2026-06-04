@@ -13,7 +13,7 @@ from benchmarks.r3_scalability import sweep, LEVEL_KEM, LEVEL_SIG
 
 def main():
     # Ensure results directory exists
-    results_dir = Path("/media/nyx/WD Black/IoD Project/results")
+    results_dir = Path(os.environ.get("RESULTS_DIR", Path(__file__).resolve().parent.parent / "results"))
     results_dir.mkdir(parents=True, exist_ok=True)
 
     # 1. Sweep data

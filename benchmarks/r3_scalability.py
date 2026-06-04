@@ -224,7 +224,7 @@ def tls_baseline_cost(
 
     Baseline assumptions:
       - Each client opens ONE TLS 1.3 session to the broker (1 ML-KEM)
-      - mTLS by default (fair comparison to Phase I mutual auth)
+      - Server-Only TLS by default (standard deployment mode)
       - Broker terminates all TLS sessions
       - Per message: broker decrypts from publisher, re-encrypts to each subscriber
       - No TLS session resumption (first-time connection, worst case)
@@ -462,7 +462,7 @@ def sweep(
         subscriber_counts: N values to sweep (default: [10,25,50,100,150,200]).
         n_pubs: Number of publishers per topic (default: 1).
         payload_size: Payload size in bytes (default: 64, typical IoT sensor).
-        mutual_tls: Whether TLS baseline uses mutual auth (default: True).
+        mutual_tls: Whether TLS baseline uses mutual auth (default: False).
 
     Returns:
         List of ComparisonRow with both protocols' costs.

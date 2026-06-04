@@ -13,6 +13,7 @@ import time
 import socket
 import ssl
 import threading
+import os
 from pathlib import Path
 import numpy as np
 
@@ -25,6 +26,11 @@ from src.pqcrypto.kdf import derive_channel_keys
 # Timing configuration
 TRIALS = 1000
 WARMUP = 100
+
+# Shared Benchmark Constants
+TEST_TOPIC = "sensors/temp"
+TEST_PUB_ID = b"pub123"
+TEST_SUB_ID = b"sub123"
 
 # ---------------------------------------------------------------------------
 # TLS 1.3 Server Thread
@@ -68,6 +74,7 @@ def measure_real_tls_handshake():
 
     client_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     client_context.check_hostname = False
+    # TLS verification is disabled for this localhost timing anchor loop
     client_context.verify_mode = ssl.CERT_NONE
 
     # Warmup
@@ -106,35 +113,40 @@ def run_dlst_flow(level: int, payload: bytes):
     kem = KEMWrapper(security_level=level)
     sig = SigWrapper(security_level=level)
     
+    # Generate distinct signature keypairs for TTA, Publisher, and Subscriber
+    tta_vk, tta_sk = sig.keygen()
+    pub_vk, pub_sk = sig.keygen()
+    sub_vk, sub_sk = sig.keygen()
+    
     # 1. Publisher Phase I (mutual handshake)
     pub_ek, pub_dk = kem.keygen()
-    pub_req_msg = pub_ek + b"nonce_client_pub" + b"pub123"
-    pub_req_sig = sig.sign(pub_dk, pub_req_msg)
-    sig.verify(pub_ek, pub_req_msg, pub_req_sig)
+    pub_req_msg = pub_ek + b"nonce_client_pub" + TEST_PUB_ID
+    pub_req_sig = sig.sign(pub_sk, pub_req_msg)
+    sig.verify(pub_vk, pub_req_msg, pub_req_sig)
     pub_ss, pub_ct = kem.encaps(pub_ek)
     pub_resp_msg = pub_ct + b"nonce_tta_pub"
-    pub_resp_sig = sig.sign(pub_dk, pub_resp_msg)
-    sig.verify(pub_ek, pub_resp_msg, pub_resp_sig)
-    kem.decaps(pub_dk, pub_ct)
-    pub_k1, pub_k2 = derive_channel_keys(pub_ss, b"nonce_client_pub", b"nonce_tta_pub")
+    pub_resp_sig = sig.sign(tta_sk, pub_resp_msg)
+    sig.verify(tta_vk, pub_resp_msg, pub_resp_sig)
+    pub_ss_recovered = kem.decaps(pub_dk, pub_ct)
+    pub_k1, pub_k2 = derive_channel_keys(pub_ss_recovered, b"nonce_client_pub", b"nonce_tta_pub")
 
     # 2. Subscriber Phase I (mutual handshake)
     sub_ek, sub_dk = kem.keygen()
-    sub_req_msg = sub_ek + b"nonce_client_sub" + b"sub123"
-    sub_req_sig = sig.sign(sub_dk, sub_req_msg)
-    sig.verify(sub_ek, sub_req_msg, sub_req_sig)
+    sub_req_msg = sub_ek + b"nonce_client_sub" + TEST_SUB_ID
+    sub_req_sig = sig.sign(sub_sk, sub_req_msg)
+    sig.verify(sub_vk, sub_req_msg, sub_req_sig)
     sub_ss, sub_ct = kem.encaps(sub_ek)
     sub_resp_msg = sub_ct + b"nonce_tta_sub"
-    sub_resp_sig = sig.sign(sub_dk, sub_resp_msg)
-    sig.verify(sub_ek, sub_resp_msg, sub_resp_sig)
-    kem.decaps(sub_dk, sub_ct)
-    sub_k1, sub_k2 = derive_channel_keys(sub_ss, b"nonce_client_sub", b"nonce_tta_sub")
+    sub_resp_sig = sig.sign(tta_sk, sub_resp_msg)
+    sig.verify(tta_vk, sub_resp_msg, sub_resp_sig)
+    sub_ss_recovered = kem.decaps(sub_dk, sub_ct)
+    sub_k1, sub_k2 = derive_channel_keys(sub_ss_recovered, b"nonce_client_sub", b"nonce_tta_sub")
 
     # 3. Publisher Phase II (TSA request/response)
     aead_ctrl = AEADWrapper(4)
     nonce = b"N" * 12
     aad = b"aad"
-    p2_req_ct, p2_req_tag = aead_ctrl.encrypt(pub_k1[:32], nonce, b"sensors/temp" + b"priority", aad)
+    p2_req_ct, p2_req_tag = aead_ctrl.encrypt(pub_k1[:32], nonce, TEST_TOPIC.encode() + b"priority", aad)
     aead_ctrl.decrypt(pub_k1[:32], nonce, p2_req_ct, p2_req_tag, aad)
     p2_resp_ct, p2_resp_tag = aead_ctrl.encrypt(pub_k2[:32], nonce, b"accepted_negotiated_levels", aad)
     aead_ctrl.decrypt(pub_k2[:32], nonce, p2_resp_ct, p2_resp_tag, aad)
@@ -146,7 +158,7 @@ def run_dlst_flow(level: int, payload: bytes):
     aead_ctrl.decrypt(pub_k1[:32], nonce, p3_ack_ct, p3_ack_tag, aad)
 
     # 5. Subscriber Phase V (Key Retrieval)
-    p5_req_ct, p5_req_tag = aead_ctrl.encrypt(sub_k1[:32], nonce, b"sensors/temp" + b"sub123", aad)
+    p5_req_ct, p5_req_tag = aead_ctrl.encrypt(sub_k1[:32], nonce, TEST_TOPIC.encode() + TEST_SUB_ID, aad)
     aead_ctrl.decrypt(sub_k1[:32], nonce, p5_req_ct, p5_req_tag, aad)
     p5_resp_ct, p5_resp_tag = aead_ctrl.encrypt(sub_k2[:32], nonce, b"subtopic_key_salt_epoch", aad)
     aead_ctrl.decrypt(sub_k2[:32], nonce, p5_resp_ct, p5_resp_tag, aad)
@@ -273,6 +285,7 @@ def run_benchmarks():
             data_plane_time = 2 * (enc_t + dec_t)
             
             tls_mean = setup_time + data_plane_time
+            # tls_std = 2 * tls_handshake_std is a constructed analytical lower bound proxy for standard deviation
             tls_std = 2 * tls_handshake_std
 
             results[level][p_size] = {
@@ -283,7 +296,7 @@ def run_benchmarks():
             print(f"  PQC-TLS-MQTT (Bound): {tls_mean:.2f} ± {tls_std:.2f} us")
 
     # Export to JSON
-    results_dir = Path("/media/nyx/WD Black/IoD Project/results")
+    results_dir = Path(os.environ.get("RESULTS_DIR", Path(__file__).resolve().parent.parent / "results"))
     results_dir.mkdir(parents=True, exist_ok=True)
     with open(results_dir / "r4_latency.json", "w") as f:
         json.dump(results, f, indent=2)

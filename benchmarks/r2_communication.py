@@ -5,6 +5,7 @@ Sweeps payload sizes (16, 64, 256, 1024 bytes) and exports results to results/r2
 """
 
 import json
+import os
 from pathlib import Path
 
 from src.protocol.security_levels import Priority
@@ -129,7 +130,7 @@ def run_communication_analysis():
             }
 
     # Export to JSON
-    results_dir = Path("/media/nyx/WD Black/IoD Project/results")
+    results_dir = Path(os.environ.get("RESULTS_DIR", Path(__file__).resolve().parent.parent / "results"))
     results_dir.mkdir(parents=True, exist_ok=True)
     with open(results_dir / "r2_communication.json", "w") as f:
         json.dump(results, f, indent=2)
